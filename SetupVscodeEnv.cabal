@@ -72,7 +72,8 @@ executable SetupVscodeEnv
                       process,
                       directory,
                       filepath,
-                      split
+                      split,
+                      ansi-terminal
                       
 
     -- Directories containing source files.

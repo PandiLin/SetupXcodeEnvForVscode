@@ -6,26 +6,46 @@ import System.IO (hSetBuffering, BufferMode(NoBuffering), stdin, hReady)
 import Control.Monad (forever)
 import System.Environment (getExecutablePath)
 import System.Exit (exitSuccess, ExitCode) 
-import System.Process (readCreateProcess, shell, readCreateProcessWithExitCode, cwd)
+import System.Process (readCreateProcess, shell, readCreateProcessWithExitCode, cwd, createProcess, proc, StdStream(..), std_out, std_err, waitForProcess)
 import System.Directory (getCurrentDirectory, listDirectory, doesFileExist)
 import System.FilePath (takeExtension, (</>), takeDirectory)
 import Control.Monad (filterM)
 import Data.Functor ((<&>))
 import Data.List.Split (splitOn, chunk)
+import System.IO (hGetLine, hIsEOF)
+import Control.Concurrent (forkIO)
+import Control.Monad (void)
+import System.IO (Handle)
+import System.Console.ANSI 
+
+executeCommand :: String -> [String] -> IO ExitCode
+executeCommand cmd args = do
+    (_, Just hout, Just herr, ph) <- createProcess (proc cmd args){ std_out = CreatePipe, std_err = CreatePipe }
+    
+    void $ forkIO $ streamOutput hout
+    void $ forkIO $ streamOutput herr
+    
+    waitForProcess ph
+
+streamOutput :: Handle -> IO ()
+streamOutput h = do
+    eof <- hIsEOF h
+    if eof
+        then return ()
+        else do
+            line <- hGetLine h
+            putStrLn line
+            streamOutput h
 
 
-executeCommand :: String -> IO (ExitCode, String, String)
-executeCommand cmd = readCreateProcessWithExitCode (shell cmd) ""
+gitCommand :: String -> [String] -> IO ExitCode
+gitCommand cmd args = executeCommand "git" (cmd:args)
 
+cloneXcodeBuildServer :: String -> String -> IO ExitCode
+cloneXcodeBuildServer url destination = gitCommand "clone" [url, destination]
 
-gitCommand :: String -> IO (ExitCode, String, String)
-gitCommand cmd = executeCommand $ "git " ++ cmd
-
-cloneXcodeBuildServer :: String -> String -> IO (ExitCode, String, String)
-cloneXcodeBuildServer url destination = gitCommand $ buildCommand ["clone", url, destination]
-
-cloneFromDefaultUrl :: String -> IO (ExitCode, String, String)
-cloneFromDefaultUrl  = cloneXcodeBuildServer "https://github.com/SolaWing/xcode-build-server.git"
+cloneFromDefaultUrl :: String -> IO ExitCode
+cloneFromDefaultUrl destination = cloneXcodeBuildServer "https://github.com/SolaWing/xcode-build-server.git" destination
 
 findFilesByExtension :: FilePath -> String -> IO [FilePath]
 findFilesByExtension dir ext = do
@@ -52,10 +72,10 @@ buildCommand = foldl splitCommand "" where
   splitCommand acc cmd = acc ++ blankSpace ++ cmd
 
 
-configXcodeBuildServer ::  FilePath -> FilePath -> IO (ExitCode, String, String)
+configXcodeBuildServer ::  FilePath -> FilePath -> IO ExitCode
 configXcodeBuildServer projectName dir = do 
   let xcodeBuildServerDir = dir </> "xcode-build-server"
-  executeCommand $ buildCommand [xcodeBuildServerDir, "config", "-scheme", projectName, "-xcodeproj", projectName ++ ".xcodeproj"]
+  executeCommand xcodeBuildServerDir ["config", "-scheme", projectName, "-project", projectName ++ ".xcodeproj"]
 
 
 takeFileName :: FilePath -> String
@@ -77,28 +97,34 @@ echo = do
       else return ()
  
 
+hintUser :: String -> IO ()
+hintUser hint = do
+  setSGR [SetColor Foreground Dull Green]
+  putStrLn $ "==> " ++ hint
+  setSGR [Reset]
 
 
 main :: IO ()
 main = do
-  currentDir <- getExecutableDir
+  currentDir <- (getExecutableDir >>= return . (</> "xcode-build-server"))
+  hintUser $ "current directory: " ++ currentDir
 
-  putStrLn "config xcode-build-server"
+  hintUser "config xcode-build-server"
   existed <- confirmXcodeBuildServerExist currentDir
-  putStrLn $ "xcode-build-server: " ++ show existed
+  hintUser $ "xcode-build-server existed: " ++ show existed
   if existed
-    then putStrLn "xcode-build-server already existed"
+    then hintUser "xcode-build-server already existed"
     else do
       putStrLn "clone xcode-build-server"
       _ <- cloneFromDefaultUrl currentDir
       putStrLn "done"
 
-  putStrLn "config xcode-build-server"
+  hintUser "config xcode-build-server"
   projectName <- (getExecutableDir >>= findXcodeProj) <&> (head . map takeFileName)
-  putStrLn $ "current project name: " ++ projectName
+  hintUser $ "current project name: " ++ projectName
 
   _ <- configXcodeBuildServer projectName currentDir
-  putStrLn "done"
+  hintUser "done"
  
 
 
