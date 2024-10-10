@@ -6,7 +6,7 @@ import System.IO (hSetBuffering, BufferMode(NoBuffering), stdin, hReady)
 import Control.Monad (forever)
 import System.Environment (getExecutablePath)
 import System.Exit (exitSuccess, ExitCode) 
-import System.Process (readCreateProcess, shell, readCreateProcessWithExitCode)
+import System.Process (readCreateProcess, shell, readCreateProcessWithExitCode, cwd)
 import System.Directory (getCurrentDirectory, listDirectory, doesFileExist)
 import System.FilePath (takeExtension, (</>), takeDirectory)
 import Control.Monad (filterM)
@@ -21,9 +21,11 @@ executeCommand cmd = readCreateProcessWithExitCode (shell cmd) ""
 gitCommand :: String -> IO (ExitCode, String, String)
 gitCommand cmd = executeCommand $ "git " ++ cmd
 
-cloneXcodeBuildServer :: IO (ExitCode, String, String)
-cloneXcodeBuildServer = gitCommand "clone https://github.com/SolaWing/xcode-build-server.git"
+cloneXcodeBuildServer :: String -> String -> IO (ExitCode, String, String)
+cloneXcodeBuildServer url destination = gitCommand $ buildCommand ["clone", url, destination]
 
+cloneFromDefaultUrl :: String -> IO (ExitCode, String, String)
+cloneFromDefaultUrl  = cloneXcodeBuildServer "https://github.com/SolaWing/xcode-build-server.git"
 
 findFilesByExtension :: FilePath -> String -> IO [FilePath]
 findFilesByExtension dir ext = do
@@ -76,13 +78,28 @@ echo = do
  
 
 
+
 main :: IO ()
 main = do
-  files <- getExecutableDir >>= findXcodeProj
-  let filename = map (takeFileName)  files  
-  print $ head filename
+  currentDir <- getExecutableDir
+
+  putStrLn "config xcode-build-server"
+  existed <- confirmXcodeBuildServerExist currentDir
+  putStrLn $ "xcode-build-server: " ++ show existed
+  if existed
+    then putStrLn "xcode-build-server already existed"
+    else do
+      putStrLn "clone xcode-build-server"
+      _ <- cloneFromDefaultUrl currentDir
+      putStrLn "done"
+
+  putStrLn "config xcode-build-server"
+  projectName <- (getExecutableDir >>= findXcodeProj) <&> (head . map takeFileName)
+  putStrLn $ "current project name: " ++ projectName
+
+  _ <- configXcodeBuildServer projectName currentDir
+  putStrLn "done"
+ 
 
 
--- Helper function to create the greeting
-greet :: String -> Int -> String
-greet name age = "Hello, " ++ name ++ "! You are " ++ show age ++ " years old."
+
