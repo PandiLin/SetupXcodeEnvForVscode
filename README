@@ -1,0 +1,15 @@
+a short script to setup vscode env 
+
+to run this script, you need to have "cabal" installed.
+
+execute in the root of the project.
+
+```
+cabal run SetupVscodeEnv
+```
+
+ 
+and then drag the executable(1) to your project folder.
+
+(1) the executable is the file named "SetupVscodeEnv",
+you can find it in cabal build directory, usually it is "./dist/build/SetupVscodeEnv/SetupVscodeEnv"
